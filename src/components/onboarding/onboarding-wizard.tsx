@@ -81,8 +81,11 @@ export function OnboardingWizard({
       // re-checks the database when a client explicitly triggers an
       // "update" — without this, the (app) layout guard keeps reading the
       // stale claim and bounces straight back to /onboarding no matter how
-      // many times the wizard is completed.
-      await updateSession();
+      // many times the wizard is completed. Critically, update() must be
+      // called WITH an argument — called bare it does a plain GET that
+      // never sets `trigger: "update"` server-side, so passing `{}` here
+      // is not optional decoration.
+      await updateSession({});
       router.push("/home");
       router.refresh();
     });
