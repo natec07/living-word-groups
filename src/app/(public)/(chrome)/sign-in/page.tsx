@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { SignInForm } from "@/components/auth/sign-in-form";
@@ -14,7 +15,9 @@ export default function SignInPage() {
       <p className="mt-2 text-muted-foreground">Sign in to continue to Living Word Community.</p>
       <Card className="mt-8">
         <CardContent className="space-y-6 p-6">
-          <SignInForm />
+          <Suspense fallback={null}>
+            <SignInForm />
+          </Suspense>
           <div className="flex items-center gap-3">
             <Separator className="flex-1" />
             <span className="text-xs text-muted-foreground">or</span>
