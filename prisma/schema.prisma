@@ -1,0 +1,1316 @@
+// Living Word Community — database schema
+// See README.md for architecture notes and the permission matrix.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUTH / IDENTITY
+// ─────────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  name           String?
+  emailVerified  DateTime?
+  hashedPassword String?
+  image          String?
+  status         UserStatus @default(PENDING_APPROVAL)
+  onboardedAt    DateTime?
+  lastActiveAt   DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  // Auth.js
+  accounts Account[]
+  sessions Session[]
+
+  accountChangeRequests AccountChangeRequest[]
+
+  profile Profile?
+  roles   UserRole[]
+  permissionOverrides UserPermission[]
+
+  // content authored
+  posts             Post[]
+  comments          Comment[]
+  reactions         Reaction[]
+  bookmarks         Bookmark[]
+  follows           Follow[]
+  prayerRequests    PrayerRequest[]        @relation("PrayerAuthor")
+  prayerUpdates     PrayerUpdate[]
+  prayerInteractions PrayerInteraction[]
+  prayerAssignmentsGiven    PrayerAssignment[] @relation("AssignedBy")
+  prayerAssignmentsReceived PrayerAssignment[] @relation("AssignedTo")
+  pastoralCareNotes PastoralCareNote[]
+  videoProgress     VideoProgress[]
+  events            Event[]                @relation("EventCreator")
+  eventLeaderOf     EventLeader[]
+  eventRSVPs        EventRSVP[]
+  eventRegistrationAnswers EventRegistrationAnswer[]
+  announcements     Announcement[]
+  announcementAcks  AnnouncementAck[]
+  conversations     ConversationMember[]
+  messagesSent      Message[]
+  notifications     Notification[]
+  notificationPrefs NotificationPreference[]
+  reportsFiled      Report[]               @relation("Reporter")
+  moderationActions ModerationAction[]     @relation("Moderator")
+  auditLogs         AuditLog[]             @relation("Actor")
+  blocksInitiated   UserBlock[]            @relation("Blocker")
+  blocksReceived    UserBlock[]            @relation("Blocked")
+  searchRecords     SearchRecord[]
+  groupMemberships  GroupMember[]
+  groupQuestionAnswers GroupMembershipAnswer[]
+  spaceMemberships  SpaceMember[]
+  ministryLeaderOf  MinistryLeader[]
+  createdSpaces     Space[]                @relation("SpaceCreator")
+  pushDevices       PushDevice[]
+
+  @@index([status])
+  @@index([email])
+}
+
+// A registered push target — either a native APNs device token
+// (platform "ios"/"android", from the dormant Capacitor project) or a Web
+// Push subscription (platform "web", from the installable PWA — the app's
+// actual distribution path). For "web", deviceToken holds the
+// subscription's push endpoint URL (globally unique, same role a device
+// token plays) and p256dh/authKey hold its encryption keys. Re-registering
+// the same token/endpoint just reassigns it to the signing-in user — a
+// device can only ever belong to whoever is currently logged in on it.
+model PushDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  platform    String
+  deviceToken String   @unique
+  p256dh      String?
+  authKey     String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum AccountChangeType {
+  EMAIL
+  PASSWORD
+}
+
+// A pending, code-verified change to a security-sensitive credential
+// (email or password). The new value is staged here — hashed already for
+// PASSWORD — and only applied to User once the emailed code is confirmed.
+model AccountChangeRequest {
+  id        String            @id @default(cuid())
+  userId    String
+  type      AccountChangeType
+  newValue  String            @db.Text
+  codeHash  String
+  attempts  Int               @default(0)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+enum AgeRange {
+  CHILD
+  YOUTH
+  YOUNG_ADULT
+  ADULT
+  SENIOR
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  firstName   String
+  lastName    String
+  bio         String?  @db.Text
+  avatarUrl   String?
+
+  // Non-sensitive optional fields
+  birthdayMonth Int?
+  birthdayDay   Int?
+  ageRange      AgeRange?
+  preferredLanguage String? @default("en")
+  serveInterests String[] @default([])
+  ministryInterests String[] @default([])
+  socialLinks   Json?    @default("{}")
+
+  // Internal-only flags — never exposed via public API/serializers
+  isMinor            Boolean  @default(false)
+  guardianEmail      String?
+  guardianConsentAt  DateTime?
+  phone              String?
+  addressLine        String?
+
+  // Visibility preferences: map of field -> "PUBLIC" | "MEMBERS" | "PRIVATE"
+  visibility Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROLES & PERMISSIONS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum RoleKey {
+  ADMINISTRATOR
+  PASTOR_STAFF
+  MINISTRY_LEADER
+  GROUP_LEADER
+  MEMBER
+  GUEST
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  key         RoleKey  @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "prayer:view_confidential"
+  category    String
+  description String?
+
+  rolePermissions RolePermission[]
+  userOverrides   UserPermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// Per-user permission overrides, so admins can grant/revoke individual
+// permissions beyond what a member's roles imply.
+model UserPermission {
+  userId       String
+  permissionId String
+  granted      Boolean @default(true)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CAMPUS / MINISTRY
+// ─────────────────────────────────────────────────────────────────────────
+
+model Ministry {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  coverImage  String?
+  icon        String?
+  createdAt   DateTime @default(now())
+
+  leaders MinistryLeader[]
+  spaces  Space[]
+  videos  Video[]
+  series  VideoSeries[]
+  events  Event[]
+}
+
+model MinistryLeader {
+  ministryId String
+  userId     String
+
+  ministry Ministry @relation(fields: [ministryId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ministryId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SPACES & GROUPS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum SpaceType {
+  CHURCH_WIDE
+  MINISTRY
+  GROUP_HUB
+  EVENT_TEMP
+}
+
+enum PrivacyLevel {
+  PUBLIC
+  MEMBERS_ONLY
+  PRIVATE
+  INVITE_ONLY
+  HIDDEN
+}
+
+model Space {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  description String?      @db.Text
+  coverImage  String?
+  icon        String?
+  type        SpaceType    @default(MINISTRY)
+  privacy     PrivacyLevel @default(MEMBERS_ONLY)
+  guidelines  String?      @db.Text
+  features    Json         @default("{\"discussion\":true,\"chat\":false,\"videos\":false,\"events\":true,\"resources\":false,\"directory\":true,\"announcements\":true,\"prayer\":false,\"courses\":false}")
+  memberCount Int          @default(0)
+  ministryId  String?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  archivedAt  DateTime?
+
+  ministry  Ministry?     @relation(fields: [ministryId], references: [id])
+  createdBy User?         @relation("SpaceCreator", fields: [createdById], references: [id])
+  members   SpaceMember[]
+  groups    Group[]
+  posts     Post[]
+  events    Event[]
+  announcements Announcement[]
+
+  @@index([ministryId])
+  @@index([privacy])
+}
+
+enum SpaceMemberRole {
+  MEMBER
+  LEADER
+  ADMIN
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  INVITED
+  MUTED
+  REMOVED
+}
+
+model SpaceMember {
+  id       String            @id @default(cuid())
+  spaceId  String
+  userId   String
+  role     SpaceMemberRole   @default(MEMBER)
+  status   MembershipStatus  @default(ACTIVE)
+  joinedAt DateTime          @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@index([userId])
+}
+
+enum GroupPrivacy {
+  OPEN
+  APPROVAL_REQUIRED
+  INVITE_ONLY
+  HIDDEN
+}
+
+model Group {
+  id               String       @id @default(cuid())
+  spaceId          String?
+  name             String
+  slug             String       @unique
+  description      String?      @db.Text
+  coverImage       String?
+  meetingSchedule  String?
+  location         String?
+  onlineLink       String?
+  privacy          GroupPrivacy @default(OPEN)
+  ageRestriction   AgeRange?
+  rules            String?      @db.Text
+  memberCount      Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  archivedAt       DateTime?
+
+  space   Space?  @relation(fields: [spaceId], references: [id])
+  members GroupMember[]
+  questions GroupMembershipQuestion[]
+  posts   Post[]
+  events  Event[]
+  conversation Conversation?
+
+  @@index([spaceId])
+  @@index([privacy])
+}
+
+enum GroupMemberRole {
+  MEMBER
+  CO_LEADER
+  LEADER
+}
+
+model GroupMember {
+  id          String            @id @default(cuid())
+  groupId     String
+  userId      String
+  role        GroupMemberRole   @default(MEMBER)
+  status      MembershipStatus  @default(ACTIVE)
+  mutedUntil  DateTime?
+  joinedAt    DateTime          @default(now())
+
+  group   Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers GroupMembershipAnswer[]
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([status])
+}
+
+model GroupMembershipQuestion {
+  id       String  @id @default(cuid())
+  groupId  String
+  question String
+  required Boolean @default(true)
+  order    Int     @default(0)
+
+  group   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  answers GroupMembershipAnswer[]
+}
+
+model GroupMembershipAnswer {
+  id            String   @id @default(cuid())
+  questionId    String
+  userId        String
+  groupMemberId String?
+  answer        String   @db.Text
+  createdAt     DateTime @default(now())
+
+  question    GroupMembershipQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupMember GroupMember?            @relation(fields: [groupMemberId], references: [id])
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POSTS / DISCUSSIONS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum PostType {
+  STANDARD
+  QUESTION
+  POLL
+  TESTIMONY
+  PRAYER
+  PRAISE_REPORT
+  ANNOUNCEMENT
+  PHOTO
+  VIDEO
+  LINK
+  RESOURCE
+  EVENT
+}
+
+enum PostStatus {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+  REMOVED
+}
+
+model Post {
+  id             String     @id @default(cuid())
+  authorId       String
+  spaceId        String?
+  groupId        String?
+  type           PostType   @default(STANDARD)
+  title          String?
+  body           String     @db.Text
+  status         PostStatus @default(PUBLISHED)
+  pinned         Boolean    @default(false)
+  commentsLocked Boolean    @default(false)
+  viewCount      Int        @default(0)
+  publishedAt    DateTime   @default(now())
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  author User   @relation(fields: [authorId], references: [id])
+  space  Space? @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  group  Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  attachments PostAttachment[]
+  tags        PostTag[]
+  comments    Comment[]
+  reactions   Reaction[]
+  bookmarks   Bookmark[]
+  pollOptions PollOption[]
+
+  @@index([spaceId, publishedAt])
+  @@index([groupId, publishedAt])
+  @@index([authorId])
+  @@index([status])
+}
+
+enum AttachmentType {
+  IMAGE
+  VIDEO
+  FILE
+  LINK
+}
+
+model PostAttachment {
+  id       String         @id @default(cuid())
+  postId   String
+  type     AttachmentType
+  url      String
+  metadata Json?          @default("{}")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model PollOption {
+  id     String @id @default(cuid())
+  postId String
+  label  String
+  order  Int    @default(0)
+
+  post  Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+}
+
+model PollVote {
+  optionId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@id([optionId, userId])
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+}
+
+enum ContentStatus {
+  PUBLISHED
+  REMOVED
+}
+
+model Comment {
+  id        String        @id @default(cuid())
+  postId    String
+  authorId  String
+  parentId  String?
+  body      String        @db.Text
+  status    ContentStatus @default(PUBLISHED)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User      @relation(fields: [authorId], references: [id])
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
+
+  reactions Reaction[]
+
+  @@index([postId])
+  @@index([parentId])
+}
+
+enum ReactionType {
+  AMEN
+  PRAISE_GOD
+  PRAYING
+  ENCOURAGED
+  LOVE
+}
+
+model Reaction {
+  id        String       @id @default(cuid())
+  userId    String
+  postId    String?
+  commentId String?
+  type      ReactionType
+  createdAt DateTime     @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId, commentId, type])
+  @@index([postId])
+  @@index([commentId])
+}
+
+enum BookmarkType {
+  POST
+  VIDEO
+  SERIES
+  EVENT
+  RESOURCE
+}
+
+model Bookmark {
+  id        String       @id @default(cuid())
+  userId    String
+  type      BookmarkType
+  postId    String?
+  videoId   String?
+  seriesId  String?
+  eventId   String?
+  createdAt DateTime     @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post   Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  video  Video?  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  series VideoSeries? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  event  Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId, videoId, seriesId, eventId])
+  @@index([userId])
+}
+
+enum FollowTargetType {
+  SPACE
+  MINISTRY
+  USER
+  SERIES
+}
+
+model Follow {
+  id             String           @id @default(cuid())
+  followerId     String
+  followingType  FollowTargetType
+  followingId    String
+  createdAt      DateTime         @default(now())
+
+  follower User @relation(fields: [followerId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingType, followingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PRAYER
+// ─────────────────────────────────────────────────────────────────────────
+
+enum PrayerCategory {
+  HEALTH
+  FAMILY
+  FINANCES
+  GUIDANCE
+  SALVATION
+  GRIEF
+  RELATIONSHIPS
+  WORK
+  SPIRITUAL_GROWTH
+  OTHER
+}
+
+enum PrayerUrgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Who is allowed to see this request.
+enum PrayerPrivacy {
+  PUBLIC          // visible church-wide
+  GROUP           // visible only to the member's group
+  PRAYER_TEAM     // visible only to prayer-team leaders
+  PASTORAL_STAFF  // visible only to pastoral staff
+  ANONYMOUS       // visible church-wide, author identity hidden from members
+  CONFIDENTIAL    // visible only to assigned staff — never surfaced broadly
+}
+
+enum PrayerStatus {
+  NEW
+  PRAYING
+  FOLLOW_UP_NEEDED
+  ANSWERED
+  ARCHIVED
+}
+
+model PrayerRequest {
+  id            String         @id @default(cuid())
+  authorId      String
+  groupId       String?
+  title         String
+  details       String         @db.Text
+  category      PrayerCategory @default(OTHER)
+  urgency       PrayerUrgency  @default(MEDIUM)
+  privacy       PrayerPrivacy  @default(PRAYER_TEAM)
+  concealName   Boolean        @default(false)
+  status        PrayerStatus   @default(NEW)
+  prayerCount   Int            @default(0)
+  isPraiseReport Boolean       @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  author User @relation("PrayerAuthor", fields: [authorId], references: [id])
+
+  updates     PrayerUpdate[]
+  interactions PrayerInteraction[]
+  assignments PrayerAssignment[]
+  careNotes   PastoralCareNote[]
+
+  @@index([privacy, status])
+  @@index([groupId])
+  @@index([authorId])
+}
+
+model PrayerInteraction {
+  prayerRequestId String
+  userId          String
+  createdAt       DateTime @default(now())
+
+  prayerRequest PrayerRequest @relation(fields: [prayerRequestId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([prayerRequestId, userId])
+}
+
+model PrayerUpdate {
+  id              String   @id @default(cuid())
+  prayerRequestId String
+  authorId        String
+  body            String   @db.Text
+  createdAt       DateTime @default(now())
+
+  prayerRequest PrayerRequest @relation(fields: [prayerRequestId], references: [id], onDelete: Cascade)
+  author        User          @relation(fields: [authorId], references: [id])
+
+  @@index([prayerRequestId])
+}
+
+model PrayerAssignment {
+  id              String   @id @default(cuid())
+  prayerRequestId String
+  assignedToId    String
+  assignedById    String
+  status          String   @default("OPEN")
+  followUpAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  prayerRequest PrayerRequest @relation(fields: [prayerRequestId], references: [id], onDelete: Cascade)
+  assignedTo    User          @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedBy    User          @relation("AssignedBy", fields: [assignedById], references: [id])
+
+  @@index([prayerRequestId])
+  @@index([assignedToId])
+}
+
+// Strictly staff-only notes. Application code must gate every read/write
+// of this model behind a pastoral-care permission check.
+model PastoralCareNote {
+  id              String   @id @default(cuid())
+  prayerRequestId String
+  authorId        String
+  note            String   @db.Text
+  createdAt       DateTime @default(now())
+
+  prayerRequest PrayerRequest @relation(fields: [prayerRequestId], references: [id], onDelete: Cascade)
+  author        User          @relation(fields: [authorId], references: [id])
+
+  @@index([prayerRequestId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// VIDEO / MEDIA
+// ─────────────────────────────────────────────────────────────────────────
+
+enum VideoProvider {
+  YOUTUBE
+  VIMEO
+  MUX
+  CLOUDFLARE_STREAM
+  HLS
+}
+
+model Speaker {
+  id       String  @id @default(cuid())
+  name     String
+  title    String?
+  bio      String? @db.Text
+  photoUrl String?
+
+  videos VideoSeries[]
+  videoAppearances Video[]
+}
+
+model VideoSeries {
+  id            String       @id @default(cuid())
+  title         String
+  slug          String       @unique
+  description   String?      @db.Text
+  coverImage    String?
+  speakerId     String?
+  ministryId    String?
+  visibility    PrivacyLevel @default(PUBLIC)
+  estimatedMinutes Int?
+  createdAt     DateTime     @default(now())
+
+  speaker  Speaker?  @relation(fields: [speakerId], references: [id])
+  ministry Ministry? @relation(fields: [ministryId], references: [id])
+  items     VideoSeriesItem[]
+  resources VideoResource[]
+  bookmarks Bookmark[]
+
+  @@index([ministryId])
+}
+
+model VideoSeriesItem {
+  id       String @id @default(cuid())
+  seriesId String
+  videoId  String
+  order    Int    @default(0)
+
+  series VideoSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  video  Video       @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, videoId])
+}
+
+model Video {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  description     String?       @db.Text
+  thumbnailUrl    String?
+  speakerId       String?
+  ministryId      String?
+  provider        VideoProvider @default(YOUTUBE)
+  providerRef     String        // provider video id or HLS url
+  durationSeconds Int?
+  datePreached    DateTime?
+  scriptureRefs   String[]      @default([])
+  topics          String[]      @default([])
+  visibility      PrivacyLevel  @default(PUBLIC)
+  transcript      String?       @db.Text
+  captionsUrl     String?
+  audioUrl        String?
+  viewCount       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  speaker  Speaker?  @relation(fields: [speakerId], references: [id])
+  ministry Ministry? @relation(fields: [ministryId], references: [id])
+
+  seriesItems VideoSeriesItem[]
+  progress    VideoProgress[]
+  resources   VideoResource[]
+  bookmarks   Bookmark[]
+
+  @@unique([provider, providerRef])
+  @@index([ministryId])
+  @@index([visibility])
+}
+
+model VideoProgress {
+  userId          String
+  videoId         String
+  positionSeconds Int      @default(0)
+  completed       Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, videoId])
+}
+
+enum ResourceType {
+  PDF
+  WORKBOOK
+  NOTES
+  AUDIO
+  OTHER
+}
+
+model VideoResource {
+  id       String       @id @default(cuid())
+  videoId  String?
+  seriesId String?
+  title    String
+  fileUrl  String
+  type     ResourceType @default(PDF)
+
+  video  Video?       @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  series VideoSeries? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────────────────────────────────
+
+model Event {
+  id             String       @id @default(cuid())
+  title          String
+  slug           String       @unique
+  description    String?      @db.Text
+  coverImage     String?
+  startAt        DateTime
+  endAt          DateTime?
+  timezone       String       @default("America/New_York")
+  location       String?
+  mapUrl         String?
+  onlineLink     String?
+  ministryId     String?
+  spaceId        String?
+  groupId        String?
+  capacity       Int?
+  visibility     PrivacyLevel @default(PUBLIC)
+  recurrenceRule String?
+  allowWaitlist  Boolean      @default(false)
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  cancelledAt    DateTime?
+
+  ministry  Ministry? @relation(fields: [ministryId], references: [id])
+  space     Space?    @relation(fields: [spaceId], references: [id])
+  group     Group?    @relation(fields: [groupId], references: [id])
+  createdBy User      @relation("EventCreator", fields: [createdById], references: [id])
+
+  leaders             EventLeader[]
+  rsvps                EventRSVP[]
+  registrationQuestions EventRegistrationQuestion[]
+  bookmarks             Bookmark[]
+
+  @@index([startAt])
+  @@index([ministryId])
+  @@index([spaceId])
+}
+
+model EventLeader {
+  eventId String
+  userId  String
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+}
+
+enum RSVPStatus {
+  GOING
+  INTERESTED
+  NOT_GOING
+  WAITLISTED
+}
+
+model EventRSVP {
+  eventId     String
+  userId      String
+  status      RSVPStatus @default(GOING)
+  respondedAt DateTime   @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@index([eventId, status])
+}
+
+model EventRegistrationQuestion {
+  id       String  @id @default(cuid())
+  eventId  String
+  question String
+  required Boolean @default(true)
+  order    Int     @default(0)
+
+  event   Event                      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  answers EventRegistrationAnswer[]
+}
+
+model EventRegistrationAnswer {
+  id         String   @id @default(cuid())
+  questionId String
+  userId     String
+  answer     String   @db.Text
+  createdAt  DateTime @default(now())
+
+  question EventRegistrationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANNOUNCEMENTS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AnnouncementTarget {
+  EVERYONE
+  GROUP
+  MINISTRY
+  ROLE
+  AGE_RANGE
+  EVENT_REGISTRANTS
+  NEW_MEMBERS
+  VOLUNTEERS
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+model Announcement {
+  id            String               @id @default(cuid())
+  title         String
+  body          String               @db.Text
+  authorId      String
+  spaceId       String?
+  targetType    AnnouncementTarget   @default(EVERYONE)
+  targetId      String?
+  priority      AnnouncementPriority @default(NORMAL)
+  pinned        Boolean              @default(false)
+  requiresAck   Boolean              @default(false)
+  sendEmail     Boolean              @default(false)
+  publishAt     DateTime             @default(now())
+  expiresAt     DateTime?
+  createdAt     DateTime             @default(now())
+
+  author User   @relation(fields: [authorId], references: [id])
+  space  Space? @relation(fields: [spaceId], references: [id])
+  acks   AnnouncementAck[]
+
+  @@index([targetType, publishAt])
+}
+
+model AnnouncementAck {
+  announcementId String
+  userId         String
+  ackedAt        DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([announcementId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MESSAGING
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ConversationStatus {
+  ACCEPTED
+  PENDING_REQUEST
+}
+
+model Conversation {
+  id            String              @id @default(cuid())
+  isGroup       Boolean             @default(false)
+  title         String?
+  status        ConversationStatus  @default(ACCEPTED)
+  requiresChaperone Boolean         @default(false)
+  groupId       String?             @unique
+  createdAt     DateTime            @default(now())
+
+  group    Group?               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+  mutedUntil     DateTime?
+  joinedAt       DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id                   String    @id @default(cuid())
+  conversationId       String
+  senderId             String
+  body                 String    @db.Text
+  attachments          Json      @default("[]")
+  audioUrl             String?
+  audioDurationSeconds Int?
+  // Transcript is a separate nullable column (not populated yet — no STT
+  // provider is wired up) so a transcription pass can be added later
+  // without another migration or touching existing voice messages' shape.
+  audioTranscript      String?   @db.Text
+  createdAt            DateTime  @default(now())
+  deletedAt            DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User          @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum NotificationCategory {
+  COMMENT
+  REPLY
+  MENTION
+  REACTION
+  GROUP_ANNOUNCEMENT
+  EVENT_REMINDER
+  MEMBERSHIP_APPROVAL
+  NEW_MESSAGE
+  NEW_VIDEO
+  PRAYER_UPDATE
+  STAFF_ANNOUNCEMENT
+}
+
+model Notification {
+  id        String                @id @default(cuid())
+  userId    String
+  category  NotificationCategory
+  title     String
+  body      String?
+  deepLink  String?
+  isRead    Boolean               @default(false)
+  metadata  Json?                 @default("{}")
+  createdAt DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+enum NotificationFrequency {
+  IMMEDIATE
+  DAILY_DIGEST
+  WEEKLY_DIGEST
+  OFF
+}
+
+model NotificationPreference {
+  userId    String
+  category  NotificationCategory
+  frequency NotificationFrequency @default(IMMEDIATE)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MODERATION / TRUST & SAFETY
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ReportTargetType {
+  POST
+  COMMENT
+  MESSAGE
+  PROFILE
+  VIDEO
+}
+
+enum ReportReason {
+  HARASSMENT
+  SPAM
+  INAPPROPRIATE_CONTENT
+  SAFETY_CONCERN
+  FALSE_INFORMATION
+  PRIVACY_CONCERN
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id         String           @id @default(cuid())
+  reporterId String
+  targetType ReportTargetType
+  targetId   String
+  reason     ReportReason
+  details    String?          @db.Text
+  status     ReportStatus     @default(OPEN)
+  createdAt  DateTime         @default(now())
+  resolvedAt DateTime?
+
+  reporter User @relation("Reporter", fields: [reporterId], references: [id])
+  actions  ModerationAction[]
+
+  @@index([status])
+  @@index([targetType, targetId])
+}
+
+enum ModerationActionType {
+  REMOVE_CONTENT
+  WARN
+  MUTE
+  SUSPEND
+  RESTORE
+  NOTE
+}
+
+model ModerationAction {
+  id          String                @id @default(cuid())
+  reportId    String?
+  moderatorId String
+  targetType  ReportTargetType
+  targetId    String
+  action      ModerationActionType
+  notes       String?               @db.Text
+  createdAt   DateTime              @default(now())
+
+  report    Report? @relation(fields: [reportId], references: [id])
+  moderator User    @relation("Moderator", fields: [moderatorId], references: [id])
+
+  @@index([targetType, targetId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?    @default("{}")
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("Actor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model UserBlock {
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+}
+
+model SearchRecord {
+  id          String   @id @default(cuid())
+  userId      String?
+  query       String
+  resultCount Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// APP SETTINGS
+// ─────────────────────────────────────────────────────────────────────────
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
