@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createEventAction } from "@/server/actions/admin-events";
+import { EVENT_VISIBILITY_LABELS } from "@/lib/select-options";
 
 export function CreateEventForm({ ministries }: { ministries: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -77,7 +78,7 @@ export function CreateEventForm({ ministries }: { ministries: { id: string; name
         </div>
         <div className="space-y-1.5">
           <Label>Ministry</Label>
-          <Select value={form.ministryId} onValueChange={(v) => setForm((f) => ({ ...f, ministryId: v ?? "" }))}>
+          <Select items={ministries.map((m) => ({ value: m.id, label: m.name }))} value={form.ministryId} onValueChange={(v) => setForm((f) => ({ ...f, ministryId: v ?? "" }))}>
             <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
             <SelectContent>
               {ministries.map((m) => (
@@ -92,11 +93,12 @@ export function CreateEventForm({ ministries }: { ministries: { id: string; name
         </div>
         <div className="space-y-1.5">
           <Label>Visibility</Label>
-          <Select value={form.visibility} onValueChange={(v) => setForm((f) => ({ ...f, visibility: (v ?? "PUBLIC") as typeof f.visibility }))}>
+          <Select items={EVENT_VISIBILITY_LABELS} value={form.visibility} onValueChange={(v) => setForm((f) => ({ ...f, visibility: (v ?? "PUBLIC") as typeof f.visibility }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="PUBLIC">Public</SelectItem>
-              <SelectItem value="MEMBERS_ONLY">Members only</SelectItem>
+              {Object.entries(EVENT_VISIBILITY_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

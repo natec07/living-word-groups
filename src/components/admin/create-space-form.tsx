@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createSpaceAction } from "@/server/actions/admin-content";
+import { SPACE_TYPE_LABELS, SPACE_VISIBILITY_LABELS } from "@/lib/select-options";
 
 export function CreateSpaceForm({ ministries }: { ministries: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -49,32 +50,29 @@ export function CreateSpaceForm({ ministries }: { ministries: { id: string; name
         </div>
         <div className="space-y-1.5">
           <Label>Type</Label>
-          <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: (v ?? "MINISTRY") as typeof f.type }))}>
+          <Select items={SPACE_TYPE_LABELS} value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: (v ?? "MINISTRY") as typeof f.type }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="CHURCH_WIDE">Church-wide</SelectItem>
-              <SelectItem value="MINISTRY">Ministry</SelectItem>
-              <SelectItem value="GROUP_HUB">Group hub</SelectItem>
-              <SelectItem value="EVENT_TEMP">Temporary (event/conference)</SelectItem>
+              {Object.entries(SPACE_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">
           <Label>Privacy</Label>
-          <Select value={form.privacy} onValueChange={(v) => setForm((f) => ({ ...f, privacy: (v ?? "MEMBERS_ONLY") as typeof f.privacy }))}>
+          <Select items={SPACE_VISIBILITY_LABELS} value={form.privacy} onValueChange={(v) => setForm((f) => ({ ...f, privacy: (v ?? "MEMBERS_ONLY") as typeof f.privacy }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="PUBLIC">Public</SelectItem>
-              <SelectItem value="MEMBERS_ONLY">Members only</SelectItem>
-              <SelectItem value="PRIVATE">Private</SelectItem>
-              <SelectItem value="INVITE_ONLY">Invite only</SelectItem>
-              <SelectItem value="HIDDEN">Hidden</SelectItem>
+              {Object.entries(SPACE_VISIBILITY_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label>Ministry</Label>
-          <Select value={form.ministryId} onValueChange={(v) => setForm((f) => ({ ...f, ministryId: v ?? "" }))}>
+          <Select items={ministries.map((m) => ({ value: m.id, label: m.name }))} value={form.ministryId} onValueChange={(v) => setForm((f) => ({ ...f, ministryId: v ?? "" }))}>
             <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
             <SelectContent>
               {ministries.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}

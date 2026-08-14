@@ -71,6 +71,23 @@ export async function isGroupLeader(userId: string, groupId: string) {
   return membership?.status === "ACTIVE" && (membership.role === "LEADER" || membership.role === "CO_LEADER");
 }
 
+/**
+ * Whether this user may run a group's leadership tools — approving/denying
+ * join requests, managing members.
+ *
+ * isGroupLeader() alone is membership-scoped, which locked administrators and
+ * pastors out of every group they hadn't personally joined: they could post a
+ * group announcement (that check already falls back to a permission) but the
+ * pending-requests queue was invisible and the approve action returned
+ * FORBIDDEN. It also meant a group whose only leader left had requests nobody
+ * could action. `groups.manage_all` exists precisely for this.
+ */
+export async function canManageGroup(userId: string, groupId: string) {
+  if (await isGroupLeader(userId, groupId)) return true;
+  const permissions = await getEffectivePermissions(userId);
+  return permissions.includes("groups.manage_all");
+}
+
 export async function isSpaceLeaderOrAdmin(userId: string, spaceId: string) {
   const membership = await prisma.spaceMember.findUnique({
     where: { spaceId_userId: { spaceId, userId } },

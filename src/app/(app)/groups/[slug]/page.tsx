@@ -46,6 +46,9 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ sl
 
   const isLeader = myMembership?.status === "ACTIVE" && (myMembership.role === "LEADER" || myMembership.role === "CO_LEADER");
   const canAnnounce = isLeader || permissions.includes("content.moderate");
+  // Mirrors canManageGroup() on the server: staff with groups.manage_all can
+  // work a group's request queue without having joined the group themselves.
+  const canManageRequests = isLeader || permissions.includes("groups.manage_all");
   const isActiveMember = myMembership?.status === "ACTIVE" || myMembership?.status === "MUTED";
 
   const leaders = group.members.filter((m) => m.role === "LEADER" || m.role === "CO_LEADER");
@@ -142,7 +145,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ sl
         </div>
       </div>
 
-      {isLeader && (
+      {canManageRequests && (
         <div>
           <p className="mb-2 text-sm font-medium">Requests ({pendingMembers.length})</p>
           <PendingRequests

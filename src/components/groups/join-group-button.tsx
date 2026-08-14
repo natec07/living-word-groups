@@ -60,15 +60,25 @@ export function JoinGroupButton({
     );
   }
 
+  const unansweredRequired = questions.filter((q) => q.required && !(answers[q.id] ?? "").trim());
+
   async function submit() {
+    if (unansweredRequired.length > 0) {
+      toast.error("Please answer all required questions.");
+      return;
+    }
     startTransition(async () => {
-      const status = await requestJoinGroupAction({
-        groupId,
-        answers: questions.map((q) => ({ questionId: q.id, answer: answers[q.id] ?? "" })),
-      });
-      setOpen(false);
-      toast.success(status === "ACTIVE" ? "You're in!" : "Request sent to the group leader.");
-      router.refresh();
+      try {
+        const status = await requestJoinGroupAction({
+          groupId,
+          answers: questions.map((q) => ({ questionId: q.id, answer: answers[q.id] ?? "" })),
+        });
+        setOpen(false);
+        toast.success(status === "ACTIVE" ? "You're in!" : "Request sent to the group leader.");
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't send your request — please try again.");
+      }
     });
   }
 

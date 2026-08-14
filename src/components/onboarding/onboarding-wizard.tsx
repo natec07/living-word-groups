@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useSession } from "next-auth/react";
+import { toast } from "sonner";
 import { Church, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AvatarUpload } from "@/components/profile/avatar-upload";
 import { completeOnboardingAction } from "@/server/actions/onboarding";
+import { AGE_RANGE_LABELS } from "@/lib/select-options";
 
 const MINISTRY_TOPICS = [
   "Sermons & Teaching",
@@ -65,9 +67,6 @@ export function OnboardingWizard({
 
   function finish() {
     startTransition(async () => {
-      // TEMPORARY diagnostic logging — remove once the production-only
-      // onboarding-loop bug is confirmed fixed.
-      console.log("[onboarding] finish() start");
       try {
         await completeOnboardingAction({
           agreeToGuidelines: true,
@@ -79,20 +78,21 @@ export function OnboardingWizard({
           joinGroupIds,
           notificationFrequency: frequency,
         });
-        console.log("[onboarding] completeOnboardingAction resolved");
-      } catch (err) {
-        console.error("[onboarding] completeOnboardingAction threw", err);
-        throw err;
+      } catch {
+        toast.error("Couldn't finish setting up your account. Please try again.");
+        return;
       }
-      try {
-        const newSession = await updateSession({});
-        console.log("[onboarding] updateSession resolved", newSession);
-      } catch (err) {
-        console.error("[onboarding] updateSession threw", err);
-        throw err;
-      }
-      const check = await fetch("/api/auth/session").then((r) => r.json());
-      console.log("[onboarding] session check right before navigating", check);
+      // The session JWT cached `onboarded: false` at sign-in and only re-checks
+      // the database when a client explicitly triggers an "update" — without
+      // this, the (app) layout guard reads the stale claim and bounces straight
+      // back to /onboarding. update() must be called WITH an argument: called
+      // bare it does a plain GET that never sets `trigger: "update"` server-side.
+      await updateSession({});
+      // Deliberately a hard navigation rather than router.push(): Next.js's
+      // client Router Cache had prefetched /home while onboarding was still
+      // incomplete (a redirect back to /onboarding) and kept serving that
+      // stale entry even after router.refresh(), so the wizard appeared to
+      // loop forever in production. A full load has no such cache to go stale.
       window.location.href = "/home";
     });
   }
@@ -154,13 +154,12 @@ export function OnboardingWizard({
             </div>
             <div className="space-y-1.5">
               <Label>Age range</Label>
-              <Select value={ageRange} onValueChange={(v) => setAgeRange(v ?? "")}>
+              <Select items={AGE_RANGE_LABELS} value={ageRange} onValueChange={(v) => setAgeRange(v ?? "")}>
                 <SelectTrigger><SelectValue placeholder="Select a range" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="YOUTH">Youth</SelectItem>
-                  <SelectItem value="YOUNG_ADULT">Young adult</SelectItem>
-                  <SelectItem value="ADULT">Adult</SelectItem>
-                  <SelectItem value="SENIOR">Senior</SelectItem>
+                  {Object.entries(AGE_RANGE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

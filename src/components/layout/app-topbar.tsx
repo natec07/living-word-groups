@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Search } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -62,6 +63,16 @@ export function AppTopbar({
         </label>
       </form>
       <div className="ml-auto flex items-center gap-1">
+        {/* The search field above is desktop-only, so without this icon there
+            is no way to reach search on a phone — which is the primary way
+            this app is used. */}
+        <Link
+          href="/search"
+          aria-label="Search"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-secondary hover:text-foreground md:hidden"
+        >
+          <Search className="h-5 w-5" />
+        </Link>
         <MessagesIcon unreadCount={unreadMessages} />
         <NotificationBell unreadCount={unreadNotifications} />
         <UserMenu {...user} canAccessAdmin={canAccessAdmin} />

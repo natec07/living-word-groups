@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createAnnouncementAction } from "@/server/actions/announcements";
 import type { announcementTargets, announcementPriorities } from "@/lib/validations/announcement";
+import { ANNOUNCEMENT_AUDIENCE_LABELS, ANNOUNCEMENT_PRIORITY_LABELS } from "@/lib/select-options";
 
 type TargetType = (typeof announcementTargets)[number];
 type Priority = (typeof announcementPriorities)[number];
@@ -69,19 +70,19 @@ export function CreateAnnouncementForm({ groups }: { groups: { id: string; name:
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Label>Audience</Label>
-          <Select value={form.targetType} onValueChange={(v) => setForm((f) => ({ ...f, targetType: (v ?? "EVERYONE") as typeof f.targetType }))}>
+          <Select items={ANNOUNCEMENT_AUDIENCE_LABELS} value={form.targetType} onValueChange={(v) => setForm((f) => ({ ...f, targetType: (v ?? "EVERYONE") as typeof f.targetType }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="EVERYONE">Everyone</SelectItem>
-              <SelectItem value="GROUP">Specific group</SelectItem>
-              <SelectItem value="NEW_MEMBERS">New members</SelectItem>
+              {Object.entries(ANNOUNCEMENT_AUDIENCE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         {form.targetType === "GROUP" && (
           <div className="space-y-1.5">
             <Label>Group</Label>
-            <Select value={form.targetId} onValueChange={(v) => setForm((f) => ({ ...f, targetId: v ?? "" }))}>
+            <Select items={groups.map((g) => ({ value: g.id, label: g.name }))} value={form.targetId} onValueChange={(v) => setForm((f) => ({ ...f, targetId: v ?? "" }))}>
               <SelectTrigger><SelectValue placeholder="Select a group" /></SelectTrigger>
               <SelectContent>
                 {groups.map((g) => (
@@ -93,12 +94,12 @@ export function CreateAnnouncementForm({ groups }: { groups: { id: string; name:
         )}
         <div className="space-y-1.5">
           <Label>Priority</Label>
-          <Select value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: (v ?? "NORMAL") as typeof f.priority }))}>
+          <Select items={ANNOUNCEMENT_PRIORITY_LABELS} value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: (v ?? "NORMAL") as typeof f.priority }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="NORMAL">Normal</SelectItem>
-              <SelectItem value="IMPORTANT">Important</SelectItem>
-              <SelectItem value="URGENT">Urgent</SelectItem>
+              {Object.entries(ANNOUNCEMENT_PRIORITY_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

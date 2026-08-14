@@ -65,7 +65,15 @@ export function PostComposer({
   function submit() {
     if (!body.trim()) return;
     startTransition(async () => {
-      await createPostAction({ spaceId, groupId, type: fixedType ?? type, title: title || undefined, body });
+      // An uncaught server-action rejection here takes down the whole route
+      // with "A server error occurred" and loses the drafted post — surface it
+      // as a toast and keep the composer open with the text intact instead.
+      try {
+        await createPostAction({ spaceId, groupId, type: fixedType ?? type, title: title || undefined, body });
+      } catch {
+        toast.error("Couldn't publish that post. Please try again.");
+        return;
+      }
       setBody("");
       setTitle("");
       setOpen(false);
@@ -77,7 +85,7 @@ export function PostComposer({
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
       {!fixedType && (
-        <Select value={type} onValueChange={(v) => setType(v as PostType)}>
+        <Select items={typeOptions} value={type} onValueChange={(v) => setType(v as PostType)}>
           <SelectTrigger className="w-56">
             <SelectValue />
           </SelectTrigger>

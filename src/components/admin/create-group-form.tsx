@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createGroupAction } from "@/server/actions/admin-content";
 import { groupPrivacyLevels } from "@/lib/validations/group-admin";
+import { GROUP_PRIVACY_LABELS, AGE_RANGE_LABELS } from "@/lib/select-options";
 
 type Option = { id: string; name: string };
 
@@ -64,25 +65,23 @@ export function CreateGroupForm({ spaces, members }: { spaces: Option[]; members
         </div>
         <div className="space-y-1.5">
           <Label>Privacy</Label>
-          <Select value={form.privacy} onValueChange={(v) => setForm((f) => ({ ...f, privacy: (v ?? "OPEN") as typeof f.privacy }))}>
+          <Select items={GROUP_PRIVACY_LABELS} value={form.privacy} onValueChange={(v) => setForm((f) => ({ ...f, privacy: (v ?? "OPEN") as typeof f.privacy }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="OPEN">Open — anyone can join</SelectItem>
-              <SelectItem value="APPROVAL_REQUIRED">Approval required</SelectItem>
-              <SelectItem value="INVITE_ONLY">Invite only</SelectItem>
-              <SelectItem value="HIDDEN">Hidden (leadership)</SelectItem>
+              {Object.entries(GROUP_PRIVACY_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">
           <Label>Age restriction</Label>
-          <Select value={form.ageRestriction} onValueChange={(v) => setForm((f) => ({ ...f, ageRestriction: v ?? "" }))}>
+          <Select items={AGE_RANGE_LABELS} value={form.ageRestriction} onValueChange={(v) => setForm((f) => ({ ...f, ageRestriction: v ?? "" }))}>
             <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="YOUTH">Youth</SelectItem>
-              <SelectItem value="YOUNG_ADULT">Young adult</SelectItem>
-              <SelectItem value="ADULT">Adult</SelectItem>
-              <SelectItem value="SENIOR">Senior</SelectItem>
+              {Object.entries(AGE_RANGE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -100,7 +99,7 @@ export function CreateGroupForm({ spaces, members }: { spaces: Option[]; members
         </div>
         <div className="space-y-1.5">
           <Label>Parent space</Label>
-          <Select value={form.spaceId} onValueChange={(v) => setForm((f) => ({ ...f, spaceId: v ?? "" }))}>
+          <Select items={spaces.map((s) => ({ value: s.id, label: s.name }))} value={form.spaceId} onValueChange={(v) => setForm((f) => ({ ...f, spaceId: v ?? "" }))}>
             <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
             <SelectContent>
               {spaces.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
@@ -109,7 +108,7 @@ export function CreateGroupForm({ spaces, members }: { spaces: Option[]; members
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label>Leader</Label>
-          <Select value={form.leaderId} onValueChange={(v) => setForm((f) => ({ ...f, leaderId: v ?? "" }))}>
+          <Select items={members.map((m) => ({ value: m.id, label: m.name }))} value={form.leaderId} onValueChange={(v) => setForm((f) => ({ ...f, leaderId: v ?? "" }))}>
             <SelectTrigger><SelectValue placeholder="Assign later" /></SelectTrigger>
             <SelectContent>
               {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}

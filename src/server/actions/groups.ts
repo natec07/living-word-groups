@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireActiveUser, isGroupLeader, logAudit } from "@/lib/authz";
+import { requireActiveUser, canManageGroup, logAudit } from "@/lib/authz";
 import { joinGroupSchema, type JoinGroupInput } from "@/lib/validations/group";
 import { sendGroupRequestReceivedEmail, sendGroupRequestApprovedEmail } from "@/lib/email/send";
 import { notifyUser } from "@/lib/notify";
@@ -21,6 +21,20 @@ export async function requestJoinGroupAction(input: JoinGroupInput) {
     where: { groupId_userId: { groupId: group.id, userId: user.id } },
   });
   if (existing && existing.status !== "REMOVED") return existing.status;
+
+  // Questions marked required are rendered with a "*" and are the whole point
+  // of an approval-required group — a leader reviewing a request needs the
+  // answers. Nothing enforced them before, so a request could be submitted
+  // with every required field blank.
+  const requiredQuestions = await prisma.groupMembershipQuestion.findMany({
+    where: { groupId: group.id, required: true },
+    select: { id: true },
+  });
+  const answerByQuestionId = new Map(parsed.answers.map((a) => [a.questionId, a.answer.trim()]));
+  const missing = requiredQuestions.filter((q) => !answerByQuestionId.get(q.id));
+  if (missing.length > 0) {
+    throw new Error("Please answer all required questions before sending your request.");
+  }
 
   const status = group.privacy === "OPEN" ? "ACTIVE" : "PENDING";
 
@@ -59,7 +73,7 @@ export async function leaveGroupAction(groupId: string) {
 }
 
 async function assertGroupLeader(userId: string, groupId: string) {
-  const permitted = await isGroupLeader(userId, groupId);
+  const permitted = await canManageGroup(userId, groupId);
   if (!permitted) throw new Error("FORBIDDEN");
 }
 

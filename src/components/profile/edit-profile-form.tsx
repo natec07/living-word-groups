@@ -12,6 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { updateProfileAction } from "@/server/actions/profile";
 import type { UpdateProfileInput } from "@/lib/validations/profile";
 import { SUPPORTED_LANGUAGES } from "@/lib/translate/languages";
+import { AGE_RANGE_LABELS } from "@/lib/select-options";
+
+const LANGUAGE_LABELS: Record<string, string> = Object.fromEntries(
+  SUPPORTED_LANGUAGES.map((lang) => [lang.code, lang.label])
+);
 
 type ProfileFormData = {
   firstName: string;
@@ -84,13 +89,12 @@ export function EditProfileForm({ profile }: { profile: ProfileFormData }) {
 
       <div className="space-y-1.5">
         <Label>Age range</Label>
-        <Select value={form.ageRange} onValueChange={(v) => set("ageRange", v ?? "")}>
+        <Select items={AGE_RANGE_LABELS} value={form.ageRange} onValueChange={(v) => set("ageRange", v ?? "")}>
           <SelectTrigger><SelectValue placeholder="Select a range" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="YOUTH">Youth</SelectItem>
-            <SelectItem value="YOUNG_ADULT">Young adult</SelectItem>
-            <SelectItem value="ADULT">Adult</SelectItem>
-            <SelectItem value="SENIOR">Senior</SelectItem>
+            {Object.entries(AGE_RANGE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -98,7 +102,7 @@ export function EditProfileForm({ profile }: { profile: ProfileFormData }) {
       <div className="space-y-1.5">
         <Label>Preferred language</Label>
         <p className="text-xs text-muted-foreground">Used by the &quot;Translate&quot; option on messages and announcements.</p>
-        <Select value={form.preferredLanguage} onValueChange={(v) => set("preferredLanguage", v ?? "en")}>
+        <Select items={LANGUAGE_LABELS} value={form.preferredLanguage} onValueChange={(v) => set("preferredLanguage", v ?? "en")}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             {SUPPORTED_LANGUAGES.map((lang) => (

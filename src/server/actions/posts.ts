@@ -26,8 +26,11 @@ async function assertCanPostIn(userId: string, spaceId?: string, groupId?: strin
     return;
   }
   if (spaceId) {
-    const membership = await prisma.spaceMember.findUnique({ where: { spaceId_userId: { spaceId, userId } } });
-    if (!membership || membership.status !== "ACTIVE") throw new Error("FORBIDDEN");
+    // The permission alone decides this, deliberately: church-wide posting is
+    // staff-only, and staff are not necessarily explicit members of the
+    // church-wide space. Also requiring a SpaceMember row meant a newly
+    // promoted admin/pastor saw the composer (the UI gates purely on this
+    // permission) but got FORBIDDEN on submit — the two checks have to agree.
     const permissions = await getEffectivePermissions(userId);
     if (!permissions.includes("announcements.publish_churchwide")) throw new Error("FORBIDDEN");
     return;

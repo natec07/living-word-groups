@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button-link";
 import { initials } from "@/lib/format";
 import { isFieldVisible } from "@/lib/profile-visibility";
+import { AGE_RANGE_LABELS } from "@/lib/select-options";
 
 export default async function MemberProfilePage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId: targetUserId } = await params;
@@ -49,7 +50,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
         {canSee("bio") && p.bio && <p className="mt-4 text-foreground/90">{p.bio}</p>}
 
         {canSee("ageRange") && p.ageRange && (
-          <p className="mt-3 text-sm text-muted-foreground">{p.ageRange.replace("_", " ").toLowerCase()}</p>
+          <p className="mt-3 text-sm text-muted-foreground">{AGE_RANGE_LABELS[p.ageRange] ?? p.ageRange}</p>
         )}
 
         {p.ministryInterests.length > 0 && (
