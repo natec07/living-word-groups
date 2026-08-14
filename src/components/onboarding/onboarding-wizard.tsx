@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Church, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,7 +37,6 @@ export function OnboardingWizard({
   ministries: { id: string; name: string }[];
   openGroups: { id: string; name: string; description: string | null }[];
 }) {
-  const router = useRouter();
   const { update: updateSession } = useSession();
   const [step, setStep] = useState(0);
   const [pending, startTransition] = useTransition();
@@ -86,8 +84,14 @@ export function OnboardingWizard({
       // never sets `trigger: "update"` server-side, so passing `{}` here
       // is not optional decoration.
       await updateSession({});
-      router.push("/home");
-      router.refresh();
+      // A soft client-side router.push() here was still landing back on
+      // /onboarding in production (though never locally): Next.js's Router
+      // Cache had prefetched /home while still mid-onboarding — a redirect
+      // response — and served that stale cached entry instead of hitting
+      // the server again, even after router.refresh(). A hard navigation
+      // has no client cache to be stale, so it can't reproduce that class
+      // of bug at all.
+      window.location.href = "/home";
     });
   }
 
