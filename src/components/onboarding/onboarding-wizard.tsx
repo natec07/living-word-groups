@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Church, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -38,6 +39,7 @@ export function OnboardingWizard({
   openGroups: { id: string; name: string; description: string | null }[];
 }) {
   const router = useRouter();
+  const { update: updateSession } = useSession();
   const [step, setStep] = useState(0);
   const [pending, startTransition] = useTransition();
 
@@ -75,6 +77,12 @@ export function OnboardingWizard({
         joinGroupIds,
         notificationFrequency: frequency,
       });
+      // The session JWT cached `onboarded: false` at sign-in and only
+      // re-checks the database when a client explicitly triggers an
+      // "update" — without this, the (app) layout guard keeps reading the
+      // stale claim and bounces straight back to /onboarding no matter how
+      // many times the wizard is completed.
+      await updateSession();
       router.push("/home");
       router.refresh();
     });

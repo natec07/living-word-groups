@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Poppins, Inter } from "next/font/google";
 import "./globals.css";
+import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { NativeThemeBridge } from "@/components/native/native-theme-bridge";
 import { ServiceWorkerRegistration } from "@/components/native/service-worker-registration";
@@ -62,19 +63,21 @@ export default function RootLayout({
       className={`${fontHeading.variable} ${fontInter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <NativeThemeBridge />
-          <ServiceWorkerRegistration />
-          <TooltipProvider delay={200}>
-            {children}
-            <Toaster position="bottom-right" richColors closeButton />
-          </TooltipProvider>
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <NativeThemeBridge />
+            <ServiceWorkerRegistration />
+            <TooltipProvider delay={200}>
+              {children}
+              <Toaster position="bottom-right" richColors closeButton />
+            </TooltipProvider>
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );
