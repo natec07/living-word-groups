@@ -65,32 +65,34 @@ export function OnboardingWizard({
 
   function finish() {
     startTransition(async () => {
-      await completeOnboardingAction({
-        agreeToGuidelines: true,
-        firstName,
-        lastName,
-        bio: bio || undefined,
-        ageRange: (ageRange || undefined) as Parameters<typeof completeOnboardingAction>[0]["ageRange"],
-        ministryInterests: interests,
-        joinGroupIds,
-        notificationFrequency: frequency,
-      });
-      // The session JWT cached `onboarded: false` at sign-in and only
-      // re-checks the database when a client explicitly triggers an
-      // "update" — without this, the (app) layout guard keeps reading the
-      // stale claim and bounces straight back to /onboarding no matter how
-      // many times the wizard is completed. Critically, update() must be
-      // called WITH an argument — called bare it does a plain GET that
-      // never sets `trigger: "update"` server-side, so passing `{}` here
-      // is not optional decoration.
-      await updateSession({});
-      // A soft client-side router.push() here was still landing back on
-      // /onboarding in production (though never locally): Next.js's Router
-      // Cache had prefetched /home while still mid-onboarding — a redirect
-      // response — and served that stale cached entry instead of hitting
-      // the server again, even after router.refresh(). A hard navigation
-      // has no client cache to be stale, so it can't reproduce that class
-      // of bug at all.
+      // TEMPORARY diagnostic logging — remove once the production-only
+      // onboarding-loop bug is confirmed fixed.
+      console.log("[onboarding] finish() start");
+      try {
+        await completeOnboardingAction({
+          agreeToGuidelines: true,
+          firstName,
+          lastName,
+          bio: bio || undefined,
+          ageRange: (ageRange || undefined) as Parameters<typeof completeOnboardingAction>[0]["ageRange"],
+          ministryInterests: interests,
+          joinGroupIds,
+          notificationFrequency: frequency,
+        });
+        console.log("[onboarding] completeOnboardingAction resolved");
+      } catch (err) {
+        console.error("[onboarding] completeOnboardingAction threw", err);
+        throw err;
+      }
+      try {
+        const newSession = await updateSession({});
+        console.log("[onboarding] updateSession resolved", newSession);
+      } catch (err) {
+        console.error("[onboarding] updateSession threw", err);
+        throw err;
+      }
+      const check = await fetch("/api/auth/session").then((r) => r.json());
+      console.log("[onboarding] session check right before navigating", check);
       window.location.href = "/home";
     });
   }
