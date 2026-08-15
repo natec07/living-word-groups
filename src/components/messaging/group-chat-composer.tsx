@@ -301,7 +301,7 @@ export function GroupChatComposer({
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
+          accept="image/*"
           multiple
           className="hidden"
           onChange={handleFiles}

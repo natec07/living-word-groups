@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useUploadThing } from "@/lib/uploadthing";
 import { updateGroupCoverAction, updateSpaceCoverAction } from "@/server/actions/admin-content";
 import { cn } from "@/lib/utils";
+import { isSelectableImage } from "@/lib/image-file";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -42,7 +43,7 @@ export function CoverImageUpload({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!isSelectableImage(file)) {
       toast.error("Please choose an image file");
       return;
     }
@@ -83,7 +84,7 @@ export function CoverImageUpload({
       >
         <Camera className="h-3 w-3" aria-hidden="true" />
       </button>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
     </div>
   );
 }

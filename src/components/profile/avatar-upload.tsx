@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUploadThing } from "@/lib/uploadthing";
 import { initials } from "@/lib/format";
+import { isSelectableImage } from "@/lib/image-file";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 
@@ -38,7 +39,7 @@ export function AvatarUpload({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!isSelectableImage(file)) {
       toast.error("Please choose an image file");
       return;
     }
@@ -77,7 +78,7 @@ export function AvatarUpload({
         <p className="text-sm font-medium text-foreground">Profile photo</p>
         <p className="text-xs text-muted-foreground">JPG, PNG, WEBP, or GIF — up to 4MB</p>
       </div>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
     </div>
   );
 }
